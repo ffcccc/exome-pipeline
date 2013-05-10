@@ -3,7 +3,6 @@ FASTQPATH=$1
 FASTQ1NAME=$2
 FASTQ2NAME=$3
 
-
 BIN="~/bin/"
 HG19PATH=$BIN"hg19/"
 HG19fa=$HG19PATH"ucsc.hg19.fasta" 
