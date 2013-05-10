@@ -104,7 +104,7 @@ if $INDELRealign; then
 	java $MEM -jar $BIN"gatk/GenomeAnalysisTK.jar" -T RealignerTargetCreator -R $HG19PATH"ucsc.hg19.fasta" -I $FASTQPATH"MAP.marked.bam" -o $FASTQPATH"MAP.intervals"
 	
 	#7 Realign BAM to get better Indel calling (Genome Analysis Toolkit): .marked.bam, .intervals ==> .realn.bam
-	java -jar $BIN"gatk/GenomeAnalysisTK.jar -T IndelRealigner -R $HG19PATHucsc.hg19.fasta -I $FASTQPATH"MAP.marked.bam" -targetIntervals $FASTQPATH"MAP.intervals" -o $FASTQPATH"MAP.realn.bam"
+	java -jar $BIN"gatk/GenomeAnalysisTK.jar" -T IndelRealigner -R $HG19PATHucsc.hg19.fasta -I $FASTQPATH"MAP.marked.bam" -targetIntervals $FASTQPATH"MAP.intervals" -o $FASTQPATH"MAP.realn.bam"
 	
 	#7.1 using paired end data, the mate information must be fixed: .realn.bam ==> .mated.bam
 	java $MEM -Djava.io.tmpdir=/tmp -jar $BIN"picard/FixMateInformation.jar" INPUT=$FASTQPATH"MAP.realn.bam" OUTPUT=$FASTQPATH"MAP.mated.bam" SO=coordinate CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT
