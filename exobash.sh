@@ -3,12 +3,12 @@ FASTQPATH=$1
 FASTQ1NAME=$2
 FASTQ2NAME=$3
 
-BIN="~/bin/"
-HG19PATH=$BIN"hg19/"
-HG19fa=$HG19PATH"ucsc.hg19.fasta" 
+BIN="~/bin"
+HG19PATH=$BIN/hg19
+HG19fa=$HG19PATH/ucsc.hg19.fasta 
 #HG19fa=$HG19PATH"hg19.fa" 
-TRIM1fq=$FASTQPATH$FASTQ1NAME
-TRIM2fq=$FASTQPATH$FASTQ2NAME
+TRIM1fq=$FASTQPATH/$FASTQ1NAME
+TRIM2fq=$FASTQPATH/$FASTQ2NAME
 #memory alloc.
 MEM=-Xmx16g
 NCORES=4
@@ -72,7 +72,7 @@ fi
 if $MAP2Bam; then
 	# mapping su bundled-hg19 con bwa o bowtie
 	#1 Align samples to genome (BWA), generates SAI files: .fastq ==> .sai
-	$BIN"bwa/bwa" aln -t $NCORES $HG19PATH"ucsc.hg19" $TRIM1fq > $FASTQPATH"MAP1.sai"
+	$($BIN"/bwa/bwa") aln -t $NCORES $HG19PATH/ucsc.hg19 $TRIM1fq > $FASTQPATH/MAP1.sai
 	$BIN"bwa/bwa" aln -t $NCORES $HG19PATH"ucsc.hg19" $TRIM2fq > $FASTQPATH"MAP2.sai"
 	
 	#2 Convert SAI to SAM (BWA): r1.sai, r2.sai ==> .sam 
@@ -89,7 +89,8 @@ if $MAP2Bam; then
 
 	#5 Index BAM (SAM Tools): .bam ==> .bai
 	$BIN"samtools/samtools" index $FASTQPATH"MAP.sort.bam"
-
+ fi
+ 
 if $PICARDPreproc; then
 	#5.1 add grouping info in header (picard): .sort.bam ==> .group.bam, .group.bai
 	java $MEM -Djava.io.tmpdir=/tmp -jar $BIN"picard/AddOrReplaceReadGroups.jar" I=$FASTQPATH"MAP.sort.bam" O=$FASTQPATH"MAP.group.bam" LB=whatever PL=illumina PU=r12 SM=111337 CREATE_INDEX=true ASSUME_SORTED=true VALIDATION_STRINGENCY=LENIENT
