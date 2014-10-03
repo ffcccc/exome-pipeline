@@ -47,9 +47,11 @@ echo "$# parameters...";
 #steps
 QC=false
 HGindex=false
-MAP2Bam=true
-MAPFq2Bam=false
+# .fq ==> .sam
+ALIGN=false
 MAPBam2Bam=false
+# .sam ==> .bam
+MAP2Bam=true
 
 PICARDPreproc=false
 
@@ -132,15 +134,11 @@ fi
 # mapping su bundled-hg19 con bwa o bowtie
 #1 Align samples to genome (BWA), generates SAI files: .fastq ==> .sai
 #  or                                                  -b .bam ==> .sai
-if $MAP2BAM; then
-
+if $ALIGN; then	
+	BAMFLAG=
 	if $MAPBam2Bam; then
 		#1.1 if reads in bam format...
 		BAMFLAG=-b
-	fi
-	if $MAPFq2Bam; then
-		#1.2 if reads in fastq format...
-		BAMFLAG=
 	fi
 
 	${BWA} aln -t ${NCORES} ${RefGENOME} $BAMFLAG ${FQ1} > ${MAP1}
@@ -151,7 +149,9 @@ if $MAP2BAM; then
 	
 	#this works with specific versions of bwa: 0.6.2/0.5.10 otherwise ==> picard/AddOrReplaceReadGroups
 	#~/bin/bwa/bwa sampe -P ${RefGENOME} -r '@RG\tID:foo\tSM:bar' ${MAP1}.sai ${MAP2}.sai ${MAP1}.bam ${MAP2}.bam > ${MAPPED}.sam
-	
+fi
+
+if $MAP2BAM; then	
 	#3 Convert SAM to BAM binary format (SAM Tools): .sam ==> .bam
 	${SAMTOOLS} import ${RefGENOME}.fai ${MAPPED} ${WORK}/${PRJ}.bam 
 
