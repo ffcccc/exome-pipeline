@@ -1,10 +1,10 @@
-# README #
+# Bash Exome Pipeline #
 
-This README would normally document whatever steps are necessary to get your application up and running.
+This repository collects scripts and documents useful to get up and running with NGS Target Region Sequencing.
 
 ### What is this repository for? ###
 
-Steps:
+The main script implements the following steps:
 
 *Verification of input integrity, quality checks, read trimming and primer contamination removal;
 *BWA alignment;
@@ -21,9 +21,9 @@ Steps:
 
 * Summary of set up
 * Configuration
-* Dependencies
-* Database configuration
-* How to run tests
+* Dependencies:
+**GATK
+**Samtools
 * Deployment instructions
 
 ### Contribution guidelines ###
