@@ -1,5 +1,0 @@
-# commands to get a region sequence from fasta file
-#
-samtools faidx hs37d5.fa 1:10-1000
-# or
-bedtools getfasta -fi hs37d5.fa -bed my.bed -fo my.fa
