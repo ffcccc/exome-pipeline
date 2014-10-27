@@ -16,7 +16,7 @@ TYPE=snps
 
 PRJ=$1
 
-WORK=~/workspace/target/${PRJ}
+WORK=~/workspace/vladimir/cardio/${PRJ}
 if [ -d $WORK ]; then
   echo "${WORK}: Directory found."
 else
@@ -81,12 +81,12 @@ echo "$# parameters...";
 HGindex=false
 #
 QC=false
-
+TRIM=false
 # if input reads in bam format:
 # BAMFLAG=-b
 
 # or
-MAP2Bam=true
+MAP2Bam=false
 #
 PICARDPreproc=true
 #
@@ -143,13 +143,15 @@ if $QC; then
 
 	~/bin/FastQC/fastqc --noextract ${FQ1} ${FQ2}
 	#
-	# trimmomatic
-	java -jar ~/bin/trimmomatic/trimmomatic.jar PE -phred33 ${FQ1} ${FQ2} ${PREFIX}_R1_paired.fq ${PREFIX}_R1_unpaired.fq ${PREFIX}_R2_paired.fq ${PREFIX}_R2_unpaired.fq ILLUMINACLIP:~/bin/trimmomatic/adapters/NexteraPE-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:150
-	#
-	~/bin/FastQC/fastqc --noextract ${PREFIX}_R1_paired.fq ${PREFIX}_R2_paired.fq
-	FQ1=${PREFIX}_R1_paired.fq
-	FQ2=${PREFIX}_R2_paired.fq
-	echo "Fastq reads updated to <${FQ1},${FQ2}>"
+	if $TRIM; then
+		# trimmomatic
+		java -jar ~/bin/trimmomatic/trimmomatic.jar PE -phred33 ${FQ1} ${FQ2} ${PREFIX}_R1_paired.fq ${PREFIX}_R1_unpaired.fq ${PREFIX}_R2_paired.fq ${PREFIX}_R2_unpaired.fq ILLUMINACLIP:~/bin/trimmomatic/adapters/NexteraPE-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:150
+		
+		~/bin/FastQC/fastqc --noextract ${PREFIX}_R1_paired.fq ${PREFIX}_R2_paired.fq
+		FQ1=${PREFIX}_R1_paired.fq
+		FQ2=${PREFIX}_R2_paired.fq
+		echo "Fastq reads updated to <${FQ1},${FQ2}>"
+	fi
 fi
 
 
@@ -197,6 +199,20 @@ if $MAP2Bam; then
 
 	#5 Index BAM (SAM Tools): .bam ==> .bai
 	${SAMTOOLS} index ${PREFIX}.sort.bam
+	
+	if [[ -f ${PREFIX}.sort.bam.bai ]]; then
+		echo "BWA Alignment done. Removing intermediate file..."
+		rm ${PREFIX}.sam
+		echo "Removed" ${PREFIX}.sam
+		rm ${PREFIX}_R1.sai
+		echo "Removed" ${PREFIX}_R1.sai
+		rm ${PREFIX}_R2.sai
+		echo "Removed" ${PREFIX}_R2.sai
+		rm ${PREFIX}.bam
+		echo "Removed" ${PREFIX}.bam
+	  exit
+	fi
+	
 fi
 
 #
@@ -220,7 +236,7 @@ if $PICARDPreproc; then
 		I=${PREFIX}.sort.bam \
 		O=${PREFIX}.group.bam \
 		LB=whatever PL=illumina PU=r12 SM=$FASTQ1NAME SO=coordinate \
-		CREATE_INDEX=true \
+		CREATE_INDEX=false \
 		VALIDATION_STRINGENCY=LENIENT
 # create index forse inutile qui ==> meglio dopo (5.2)
 
@@ -235,6 +251,12 @@ if $PICARDPreproc; then
 	#??? create index x gatk ????
 	#
 	#java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/ReorderSam.jar I=${PREFIX}.marked.bam O=${PREFIX}.lexy_marked.bam REFERENCE= ${RefGENOME} CREATE_INDEX=true
+	if [[ -f ${PREFIX}.marked.bam ]]; then
+		echo "PICARD preprocessing done. Removing intermediate file..."
+		rm ${PREFIX}.group.bam
+		echo "Removed" ${PREFIX}.group.bam
+	  exit
+	fi
 fi
 
 # here GATK needs .bai index
