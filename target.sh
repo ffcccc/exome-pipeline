@@ -88,9 +88,9 @@ TRIM=false
 # or
 MAP2Bam=false
 #
-PICARDPreproc=true
+PICARDPreproc=false
 #
-INDELRealign=true
+INDELRealign=false
 #
 # FIXMATE step
 # http://gatkforums.broadinstitute.org/discussion/1562/need-to-run-a-step-with-fixmateinformation-after-realignment-step
@@ -210,7 +210,6 @@ if $MAP2Bam; then
 		echo "Removed" ${PREFIX}_R2.sai
 		rm ${PREFIX}.bam
 		echo "Removed" ${PREFIX}.bam
-	  exit
 	fi
 	
 fi
@@ -255,8 +254,8 @@ if $PICARDPreproc; then
 		echo "PICARD preprocessing done. Removing intermediate file..."
 		rm ${PREFIX}.group.bam
 		echo "Removed" ${PREFIX}.group.bam
-	  exit
 	fi
+	
 fi
 
 # here GATK needs .bai index
@@ -315,19 +314,19 @@ if $BASERecal; then
 		-cov CycleCovariate \
 		-I ${PREFIX}.realn.bam \
 		-o ${PREFIX}.recal_data.table
-#		retired option:
-#		-cov DinucCovariate \
+		#retired option:
+		#-cov DinucCovariate \
 
-# 8.2 output recalibrated bam
-# Prints the first 2000 reads in the BAM file
+	# 8.2 output recalibrated bam
+	# Prints the reads in the BAM file
 	java ${MEM} -jar ${GATK} -T PrintReads \
 		-R ${RefGENOME} \
 		--BQSR ${PREFIX}.recal_data.table\
 		-I ${PREFIX}.realn.bam \
 		-o ${PREFIX}.baq.bam
-# riaggiungere con GATK > 2.4
-# vedi http://gatkforums.broadinstitute.org/discussion/2267/baq-tag-error
-#		-baq ${GATK_BAQ_POLICY} \ 
+	# riaggiungere con GATK > 2.4
+	# vedi http://gatkforums.broadinstitute.org/discussion/2267/baq-tag-error
+	#		-baq ${GATK_BAQ_POLICY} \ 
 fi 
 
 
