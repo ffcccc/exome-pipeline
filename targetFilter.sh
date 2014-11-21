@@ -24,16 +24,16 @@ fi
 PREFIX=${WORK}/${PRJ}
 
 #set trio data file
-PED=${PREFIX}.ped`
+PED=${PREFIX}.ped
 if [[ ! -f ${PED} ]]; then
 	echo "${PED}: File not found."
 	exit
 fi
 
 # get trio names from ped file 
-F1=`awk 'NR == 1 { print $2 }' < ${PED}`
-F2=`awk 'NR == 1 { print $3 }' < ${PED}`
-F3=`awk 'NR == 1 { print $4 }' < ${PED}`
+F1=`awk 'NR == 1 { print $2 }' ${PED}`
+F2=`awk 'NR == 1 { print $3 }' ${PED}`
+F3=`awk 'NR == 1 { print $4 }' ${PED}`
 echo ${F1}
 echo ${F2}
 echo ${F3}
@@ -73,26 +73,29 @@ echo "$# parameters...";
 
 
 #steps:
-#
+# joint genotypes
 COMBINEALL=false
-# or
-PEDSNPCall=false
 
+# quality check
 VQSR=false
 # or
 HARDFILTER=false
 
+# trio phasing
 PHASETRANSM=false
+
 RISKASSESS=false
 RISKMODEL=false
 
 
 if $COMBINEALL; then
 	# merge all vcf
-	java ${MEM} -jar ${GATK} -R ${RefGENOME} -T CombineVariants \
-	--variant ${F1}.vcf \
-	--variant ${F2}.vcf \
-	--variant ${F3}.vcf \
+	java ${MEM} -jar ${GATK} -T CombineVariants \
+	-nt $NCORES \
+	-R ${RefGENOME} \
+	-V:${F1} ${WORK}/${F1}/${F1}.vcf \
+	-V:${F2} ${WORK}/${F2}/${F2}.vcf \
+	-V:${F3} ${WORK}/${F3}/${F3}.vcf \
 	-o ${PREFIX}.all.vcf \
 	-genotypeMergeOptions UNIQUIFY
 fi
@@ -170,15 +173,18 @@ if $HARDFILTER; then
 	# Apply the filter to the SNP call set
 	java ${MEM} -jar ${GATK} -T VariantFiltration \
 		-R ${RefGENOME} \
-		-V ${PREFIX}.snps.vcf
+		-V ${PREFIX}.snps.vcf \
 		--filterExpression "QD < 2.0 || FS > 60.0 || MQ < 40.0 || HaplotypeScore > 13.0 || MappingQualityRankSum < -12.5 || ReadPosRankSum < -8.0" \
 		--filterName "my_snp_filter" \
 		-o ${PREFIX}.snps.filt.vcf
-
+		# or
+		#--clusterWindowSize 10 --filterExpression "QUAL < 30.0 || QD < 5.0 || HRun > 5 || SB > -0.10" --filterName "HARD_TO_VALIDATE"
+		# note:
+		# HaplotypeCaller does not output HaplotypeScore annotation because it already evaluates haplotype segregation internally. This annotation is only informative (and available) for variants called by Unified Genotyper.
 
 	# Extract the Indels from the call set
 	java ${MEM} -jar ${GATK} -T SelectVariants \
-		-R ${RefGENOME} 
+		-R ${RefGENOME} \
 		-nt $NCORES \
 		-V ${PREFIX}.all.vcf \
 		-selectType INDEL \
@@ -192,6 +198,26 @@ if $HARDFILTER; then
 		--filterExpression "QD < 2.0 || FS > 200.0 || ReadPosRankSum < -20.0" \
 		--filterName "my_indel_filter" \
 		-o ${PREFIX}.indels.filt.vcf
+		#--filterExpression "MQ0 >= 4 && ((MQ0 / (1.0 * DP)) > 0.1)" --filterName "HARD_TO_VALIDATE"
+		#--filterExpression "SB >= -1.0"                             --filterName "StrandBiasFilter"
+		#--filterExpression "QUAL < 10"                              --filterName "QualFilter"
+
+if false; then
+# from https://www.vlsci.org.au/lscc/exome-pipeline
+	#
+	cd $outdir
+	echo "Annotating SNV data"
+	sleep 2
+	 
+	java ${MEM} -jar ${GATK} -T GenomicAnnotator -l info -R ${RefGENOME} -B:variant,vcf ${PREFIX}.snps.pass.vcf -B:refseq,AnnotatorInputTable $refseq -m -o ${PREFIX}.snps.pass.genomicAnnotator.vcf -BTI variant
+	 
+	cd $outdir
+	echo "Annotating INDEL data"
+	sleep 2
+	 
+	java ${MEM} -jar ${GATK} -T GenomicAnnotator -l info -R ${RefGENOME} -B:variant,vcf ${PREFIX}.indels.pass.vcf -B:refseq,AnnotatorInputTable $refseq -m -o ${PREFIX}.indels.pass.genomicAnnotator.vcf -BTI variant
+fi
+
 fi
 
 if $PHASETRANSM; then
@@ -207,21 +233,24 @@ if $PHASETRANSM; then
 
 	#snps trio/family
 	java ${MEM} -jar ${GATK} -T PhaseByTransmission \
+	-R ${RefGENOME} \
 	-ped ${PED} \
 	-V ${PREFIX}.snps.filt.vcf \
 	-o ${PREFIX}.snps.phase.vcf
 	#
+	fi
+	
 	#snps quality metrics
 	cd ~/bin/snpEff/
 	cat ${PREFIX}.snps.phase.vcf | java -jar SnpSift.jar filter "( na FILTER ) | (FILTER = 'PASS' | FILTER =~ 'VQSRT')" > ${PREFIX}.snps.pass.vcf
 	cd ${WORK}	
-  ${PSEQ}/pseq ${PREFIX}.snps.phase.vcf v-stats > ${PREFIX}.snps.phase.stats
-  ${PSEQ}/pseq ${PREFIX}.snps.pass.vcf  v-stats > ${PREFIX}.snps.pass.stats
-  
-  
-  
-	#indels trio
-	java ${MEM} -jar ${GATK} -R ${RefGENOME} -T PhaseByTransmission 
+	${PSEQ}/pseq ${PREFIX}.snps.phase.vcf v-stats > ${PREFIX}.snps.phase.stats
+	${PSEQ}/pseq ${PREFIX}.snps.pass.vcf  v-stats > ${PREFIX}.snps.pass.stats
+
+
+	#indels trio/family
+	java ${MEM} -jar ${GATK} -T PhaseByTransmission \
+	-R ${RefGENOME} \
 	-ped ${PED} \
 	-V ${PREFIX}.indels.filt.vcf \
 	-o ${PREFIX}.indels.phase.vcf
@@ -232,7 +261,7 @@ if $PHASETRANSM; then
 	cd ${WORK}	
 	${PSEQ}/pseq ${PREFIX}.indels.phase.vcf v-stats > ${PREFIX}.indels.phase.stats 
 	${PSEQ}/pseq ${PREFIX}.indels.pass.vcf  v-stats > ${PREFIX}.indels.pass.stats
-fi
+
 
 cd ~/bin/snpEff/
 if $RISKASSESS; then

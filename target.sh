@@ -10,9 +10,6 @@ if [ ! $# == 1 ]; then
   exit
 fi
 
-weight="$1"
-
-TYPE=snps
 
 PRJ=$1
 
@@ -41,7 +38,7 @@ RefGENOME=${RefPrefix}/${REF}.fasta
 # or
 #RefGENOME=${RefPrefix}/${REF}.fa
 
-RefINTERVAL=${RefPrefix}/trusight_cancer_manifest.bed
+#RefINTERVAL=${RefPrefix}/trusight_cancer_manifest.bed
 # or
 RefINTERVAL=${RefPrefix}/target.intervals.bed
 
@@ -53,7 +50,7 @@ MEM=-Xmx16g
 NCORES=4
 #bin
 GATK=~/bin/gatk/GenomeAnalysisTK.jar
-PSEQ=~/bin/pseq
+#PSEQ=~/bin/pseq
 PICARD=~/bin/picard
 BWA=~/bin/bwa/bwa
 SAMTOOLS=~/bin/samtools/samtools
@@ -116,7 +113,7 @@ INDELRealign=false
 # MDTag=false
 FIXMATE_AND_BAQ=false
 # or
-BASERecal=true
+BASERecal=false
 #
 SNPCall=true
 
@@ -125,7 +122,7 @@ SNPCall=true
 if $HGindex; then
 	#cd ${RefPrefix}
 	# build index for bwa
-	${BWA} index -a bwtsw -p $RefPrefix $RefGENOME
+	${BWA} index -a bwtsw -p ${RefPrefix}.0.7 ${RefGENOME}
 	#mv ucsc.hg19* $HG19PATH
 fi
 
@@ -144,6 +141,14 @@ if $QC; then
 	~/bin/FastQC/fastqc --noextract ${FQ1} ${FQ2}
 	#
 	if $TRIM; then
+		# fastx toolkit
+		if false; then
+			~/bin/fastx/bin/fastx_trimmer -Q33 -f 20 -l 145 -i ${FQ1} -o ${PREFIX}_R1_trimmed.fq
+			~/bin/fastx/bin/fastx_trimmer -Q33 -f 20 -l 145 -i ${FQ2} -o ${PREFIX}_R2_trimmed.fq
+			~/bin/fastx/bin/fastx_clipper -Q33 -l 125 -i ${PREFIX}_R1_trimmed.fq -o ${PREFIX}_R1_clipped.fq
+			~/bin/fastx/bin/fastx_clipper -Q33 -l 125 -i ${PREFIX}_R2_trimmed.fq -o ${PREFIX}_R2_clipped.fq
+		fi
+		~/bin/FastQC/fastqc --noextract ${PREFIX}_R1_clipped.fq ${PREFIX}_R2_clipped.fq
 		# trimmomatic
 		java -jar ~/bin/trimmomatic/trimmomatic.jar PE -phred33 ${FQ1} ${FQ2} ${PREFIX}_R1_paired.fq ${PREFIX}_R1_unpaired.fq ${PREFIX}_R2_paired.fq ${PREFIX}_R2_unpaired.fq ILLUMINACLIP:~/bin/trimmomatic/adapters/NexteraPE-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:150
 		
@@ -180,18 +185,23 @@ if $MAP2Bam; then
 		echo "${FQ2} does not exist !"
 	  exit
 	fi
-
-	${BWA} aln -t ${NCORES} ${RefGENOME} ${FQ1} > ${PREFIX}_R1.sai
-	${BWA} aln -t ${NCORES} ${RefGENOME} ${FQ2} > ${PREFIX}_R2.sai
-	
-#2 Convert SAI to SAM (BWA): r1.sai, r2.sai ==> .sam 
-	${BWA} sampe -P ${RefGENOME} ${PREFIX}_R1.sai ${PREFIX}_R2.sai ${FQ1} ${FQ2} > ${PREFIX}.sam
-	
+	if true; then
+		${BWA} mem -t ${NCORES} -M ${RefPrefix}.0.7 ${FQ1} ${FQ2} > ${PREFIX}.sam
+	else
+		${BWA} aln -t ${NCORES} ${RefGENOME} ${FQ1} > ${PREFIX}_R1.sai
+		${BWA} aln -t ${NCORES} ${RefGENOME} ${FQ2} > ${PREFIX}_R2.sai
+		#2 Convert SAI to SAM (BWA): r1.sai, r2.sai ==> .sam 
+		${BWA} sampe -P ${RefGENOME} ${PREFIX}_R1.sai ${PREFIX}_R2.sai ${FQ1} ${FQ2} > ${PREFIX}.sam
+	fi
 	# LH3:
 	#this works with specific versions of bwa: 0.6.2/0.5.10 otherwise ==> picard/AddOrReplaceReadGroups
 	#~/bin/bwa/bwa sampe -P ${RefGENOME} -r '@RG\tID:foo\tSM:bar' ${MAP1}.sai ${MAP2}.sai ${MAP1}.bam ${MAP2}.bam > ${PREFIX}.sam
 	
 	#3 Convert SAM to BAM binary format (SAM Tools): .sam ==> .bam
+	if [[ ! -s ${PREFIX}.sam ]]; then
+		echo "${PREFIX}.sam: zero-length file !"
+	  exit
+	fi
 	${SAMTOOLS} import ${RefGENOME}.fai ${PREFIX}.sam ${PREFIX}.bam 
 
 	#4 Sort BAM (SAM Tools, second param is a prefix): .bam ==> .sort.bam 
@@ -202,13 +212,13 @@ if $MAP2Bam; then
 	
 	if [[ -f ${PREFIX}.sort.bam.bai ]]; then
 		echo "BWA Alignment done. Removing intermediate file..."
-		rm ${PREFIX}.sam
+		#rm ${PREFIX}.sam
 		echo "Removed" ${PREFIX}.sam
-		rm ${PREFIX}_R1.sai
+		#rm ${PREFIX}_R1.sai
 		echo "Removed" ${PREFIX}_R1.sai
-		rm ${PREFIX}_R2.sai
+		#rm ${PREFIX}_R2.sai
 		echo "Removed" ${PREFIX}_R2.sai
-		rm ${PREFIX}.bam
+		#rm ${PREFIX}.bam
 		echo "Removed" ${PREFIX}.bam
 	fi
 	
@@ -222,6 +232,11 @@ fi
 #Fix a BAM that is not indexed or not sorted, has not had duplicates marked, or is lacking read group information.
 #These steps can be performed independently of each other but this order is recommended.
 #Prerequisites:  Installed Picard tools
+
+	if [[ ! -f ${PREFIX}.sort.bam ]]; then
+		echo "${PREFIX}.sort.bam does not exist !"
+	  exit
+	fi
 #
 #Steps:
 #    Sort the aligned reads by coordinate order
@@ -252,23 +267,39 @@ if $PICARDPreproc; then
 	#java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/ReorderSam.jar I=${PREFIX}.marked.bam O=${PREFIX}.lexy_marked.bam REFERENCE= ${RefGENOME} CREATE_INDEX=true
 	if [[ -f ${PREFIX}.marked.bam ]]; then
 		echo "PICARD preprocessing done. Removing intermediate file..."
-		rm ${PREFIX}.group.bam
+		#rm ${PREFIX}.group.bam
 		echo "Removed" ${PREFIX}.group.bam
 	fi
 	
 fi
 
+#http://gatkforums.broadinstitute.org/discussion/4133/when-should-i-use-l-to-pass-in-a-list-of-intervals#latest
+#Below is a step-by-step breakdown of the Best Practices workflow, with a detailed explanation of why -L should or shouldn’t be used with each tool.
+#Tool 										-L?		Why / why not
+#RealignerTargetCreator 	YES		Faster since RTC will only look for regions that need to be realigned within the input interval; no time wasted on the rest.
+#IndelRealigner 					NO		IR will only try to realign the regions output from RealignerTargetCreator, so there is nothing to be gained by providing the capture targets.
+#BaseRecalibrator 				YES		This excludes off-target sequences and sequences that may be poorly mapped, which have a higher error rate. Including them could lead to a skewed model and bad recalibration.
+#PrintReads 							NO		Output is a bam file; using -L would lead to lost data.
+#UnifiedG./Haplotype C.		YES		We’re only interested in making calls in exome regions; the rest is a waste of time & includes lots of false positives.
+#Next steps								NO		No need since subsequent steps operate on the callset, which was restricted to the exome 
+
 # here GATK needs .bai index
 if $INDELRealign; then
+
+	if [[ ! -f ${PREFIX}.marked.bam ]]; then
+		echo "${PREFIX}.marked.bam does not exist !"
+	  exit
+	fi
 	#6 Identify target regions for realignment (Genome Analysis Toolkit): .marked.bam ==> .intervals
 	#  performance 500MB bam/~7000000 reads: 1 core -> 3hh 
 	java ${MEM} -jar ${GATK} -T RealignerTargetCreator \
 		-nt $NCORES \
 		-R ${RefGENOME} \
 		-I ${PREFIX}.marked.bam \
-		-o ${PREFIX}.intervals
+		-o ${PREFIX}.intervals \
+		-L ${RefINTERVAL}
 		#--knonwn
-		#-L
+
 	
 	#7 Realign BAM to get better Indel calling (Genome Analysis Toolkit): .marked.bam, .intervals ==> .realn.bam
 	java -jar ${GATK} -T IndelRealigner \
@@ -284,6 +315,11 @@ fi
 # -"Hello, is then necessary fixmate necessary in any step of the standard gatk protocol?"
 # G:"No, normally you shouldn't need to use fixmates."
 if $FIXMATE_AND_BAQ; then
+
+	if [[ ! -f ${PREFIX}.realn.bam ]]; then
+		echo "${PREFIX}.realn.bam does not exist !"
+	  exit
+	fi
 	#7.1 using paired end data, the mate information must be fixed: .realn.bam ==> .mated.bam
 	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/FixMateInformation.jar \
 		INPUT=${PREFIX}.realn.bam \
@@ -305,6 +341,11 @@ else
 fi
 
 if $BASERecal; then
+
+	if [[ ! -f ${PREFIX}.realn.bam ]]; then
+		echo "${PREFIX}.realn.bam does not exist !"
+	  exit
+	fi
 	#8.1 base quality score recalibration: count covariates 
 	java ${MEM} -jar ${GATK} -T BaseRecalibrator \
 		-R ${RefGENOME} \
@@ -313,7 +354,8 @@ if $BASERecal; then
 		-cov QualityScoreCovariate \
 		-cov CycleCovariate \
 		-I ${PREFIX}.realn.bam \
-		-o ${PREFIX}.recal_data.table
+		-o ${PREFIX}.recal_data.table \
+		-L ${RefINTERVAL}
 		#retired option:
 		#-cov DinucCovariate \
 
@@ -329,11 +371,36 @@ if $BASERecal; then
 	#		-baq ${GATK_BAQ_POLICY} \ 
 fi 
 
-
-# lh3
+if $COVERAGEINFO; then
+	echo "Starting coverage analysis"
+	sleep 2
+	 
+	echo "Depth..."
+	 
+	java ${MEM} -jar ${GATK} -T DepthOfCoverage \
+		-R ${RefGENOME} \
+		-I ${PREFIX}.baq.bam \
+		-o ${PREFIX}.baq.depth \
+		-L ${RefINTERVAL} \
+		-omitBaseOutput \
+		-ct 10 -ct 20 -ct 30
+		#-geneList $gene_list \
+		#-Xmx2G
+	 
+	echo "Coverage..."
+	sleep 2
+	 
+	coverageBed -abam \
+		-I ${PREFIX}.baq.bam \
+		-b ${RefINTERVAL} \ > ${$PREFIX}.
 # 08-27-2010, 01:19 PM
 # Remember to set a quality threshold (about 50) on indels. Also the best indel caller so far is believed to be Dindel.
 if $SNPCall; then
+	if [[ ! -f ${PREFIX}.baq.bam ]]; then
+		echo "${PREFIX}.baq.bam does not exist !"
+	  exit
+	fi
+	
 	#9 snp calls: .baq.bam ==> .vcf
 	java ${MEM} -jar ${GATK} -T UnifiedGenotyper \
 		-glm BOTH \
