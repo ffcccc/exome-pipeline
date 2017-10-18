@@ -10,50 +10,53 @@ if [ ! $# == 1 ]; then
   exit
 fi
 
-
+# e.g. 111337
 PRJ=$1
 
-WORK=~/workspace/vladimir/cardio/${PRJ}
+WORK=~/workspace/exome-pipeline/vladimir
 if [ -d $WORK ]; then
   echo "${WORK}: Directory found."
 else
   echo "${WORK}: Directory does not exist !"
   exit
 fi
-
-
-PREFIX=${WORK}/${PRJ}
+FQPrefix=${WORK}/${PRJ}
 # mapped output filename
-FQ1=${PREFIX}_R1.fastq
-FQ2=${PREFIX}_R2.fastq
+FQ1=${FQPrefix}_R1.fastq
+FQ2=${FQPrefix}_R2.fastq
 #
-#
+# path to genomic refs & databases
+BUNDLE=~/workspace/bundle
+# actual reference to be used
 REF=ucsc.hg19
 # or
 #REF=hs37d5
 
-RefPrefix=~/bin/${REF}
+#RefPath=~/bin/${REF}
+RefPath=${BUNDLE}/${REF}
 
-RefGENOME=${RefPrefix}/${REF}.fasta
+RefGENOME=${RefPath}/${REF}.fasta
 # or
-#RefGENOME=${RefPrefix}/${REF}.fa
+#RefGENOME=${RefPath}/${REF}.fa
 
-#RefINTERVAL=${RefPrefix}/trusight_cancer_manifest.bed
+#RefINTERVAL=${Bundle}/trusight_cancer_manifest.bed
 # or
-RefINTERVAL=${RefPrefix}/target.intervals.bed
+#RefINTERVAL=${Bundle}/target.intervals.bed
+RefINTERVAL=${Bundle}/illumina/truseq-exome-targeted-regions-manifest-v1-2.bed
 
-RefSNP=${RefPrefix}/dbsnp_137.${REF}.vcf
+RefSNP=${Bundle}/dbsnp_138.${REF}.vcf
 
 #align parameters:
 #memory alloc.
-MEM=-Xmx16g
-NCORES=4
-#bin
-GATK=~/bin/gatk/GenomeAnalysisTK.jar
-#PSEQ=~/bin/pseq
-PICARD=~/bin/picard
-BWA=~/bin/bwa/bwa
-SAMTOOLS=~/bin/samtools/samtools
+MEM=-Xmx6g
+NCORES=1
+# set the path to tools binaries
+BIN=~/bin
+GATK=${BIN}/gatk/GenomeAnalysisTK.jar
+#PSEQ=${BIN}/pseq
+PICARD=${BIN}/picard
+BWA=${BIN}/bwa/bwa
+SAMTOOLS=${BIN}/samtools/samtools
 
 echo "$# parameters...";
 
@@ -83,7 +86,7 @@ TRIM=false
 # BAMFLAG=-b
 
 # or
-MAP2Bam=false
+MAP2Bam=true
 #
 PICARDPreproc=false
 #
@@ -115,14 +118,14 @@ FIXMATE_AND_BAQ=false
 # or
 BASERecal=false
 #
-SNPCall=true
+SNPCall=false
 
 
 #----------------------------------------------------------------------------------------------------------------------------
 if $HGindex; then
-	#cd ${RefPrefix}
+	#cd ${RefPath}
 	# build index for bwa
-	${BWA} index -a bwtsw -p ${RefPrefix}.0.7 ${RefGENOME}
+	${BWA} index -a bwtsw -p ${RefPath} ${RefGENOME}
 	#mv ucsc.hg19* $HG19PATH
 fi
 
@@ -138,23 +141,23 @@ if $QC; then
 	  exit
 	fi
 
-	~/bin/FastQC/fastqc --noextract ${FQ1} ${FQ2}
+	${BIN}/FastQC/fastqc --noextract ${FQ1} ${FQ2}
 	#
 	if $TRIM; then
 		# fastx toolkit
 		if false; then
-			~/bin/fastx/bin/fastx_trimmer -Q33 -f 20 -l 145 -i ${FQ1} -o ${PREFIX}_R1_trimmed.fq
-			~/bin/fastx/bin/fastx_trimmer -Q33 -f 20 -l 145 -i ${FQ2} -o ${PREFIX}_R2_trimmed.fq
-			~/bin/fastx/bin/fastx_clipper -Q33 -l 125 -i ${PREFIX}_R1_trimmed.fq -o ${PREFIX}_R1_clipped.fq
-			~/bin/fastx/bin/fastx_clipper -Q33 -l 125 -i ${PREFIX}_R2_trimmed.fq -o ${PREFIX}_R2_clipped.fq
+			${BIN}/fastx/bin/fastx_trimmer -Q33 -f 20 -l 145 -i ${FQ1} -o ${FQPrefix}_R1_trimmed.fq
+			${BIN}/fastx/bin/fastx_trimmer -Q33 -f 20 -l 145 -i ${FQ2} -o ${FQPrefix}_R2_trimmed.fq
+			${BIN}/fastx/bin/fastx_clipper -Q33 -l 125 -i ${FQPrefix}_R1_trimmed.fq -o ${FQPrefix}_R1_clipped.fq
+			${BIN}/fastx/bin/fastx_clipper -Q33 -l 125 -i ${FQPrefix}_R2_trimmed.fq -o ${FQPrefix}_R2_clipped.fq
 		fi
-		~/bin/FastQC/fastqc --noextract ${PREFIX}_R1_clipped.fq ${PREFIX}_R2_clipped.fq
+		${BIN}/FastQC/fastqc --noextract ${FQPrefix}_R1_clipped.fq ${FQPrefix}_R2_clipped.fq
 		# trimmomatic
-		java -jar ~/bin/trimmomatic/trimmomatic.jar PE -phred33 ${FQ1} ${FQ2} ${PREFIX}_R1_paired.fq ${PREFIX}_R1_unpaired.fq ${PREFIX}_R2_paired.fq ${PREFIX}_R2_unpaired.fq ILLUMINACLIP:~/bin/trimmomatic/adapters/NexteraPE-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:150
+		java -jar ${BIN}/trimmomatic/trimmomatic.jar PE -phred33 ${FQ1} ${FQ2} ${FQPrefix}_R1_paired.fq ${FQPrefix}_R1_unpaired.fq ${FQPrefix}_R2_paired.fq ${FQPrefix}_R2_unpaired.fq ILLUMINACLIP:${BIN}/trimmomatic/adapters/NexteraPE-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:150
 		
-		~/bin/FastQC/fastqc --noextract ${PREFIX}_R1_paired.fq ${PREFIX}_R2_paired.fq
-		FQ1=${PREFIX}_R1_paired.fq
-		FQ2=${PREFIX}_R2_paired.fq
+		${BIN}/FastQC/fastqc --noextract ${FQPrefix}_R1_paired.fq ${FQPrefix}_R2_paired.fq
+		FQ1=${FQPrefix}_R1_paired.fq
+		FQ2=${FQPrefix}_R2_paired.fq
 		echo "Fastq reads updated to <${FQ1},${FQ2}>"
 	fi
 fi
@@ -186,40 +189,40 @@ if $MAP2Bam; then
 	  exit
 	fi
 	if true; then
-		${BWA} mem -t ${NCORES} -M ${RefPrefix}.0.7 ${FQ1} ${FQ2} > ${PREFIX}.sam
+		${BWA} mem -t ${NCORES} -M ${RefGENOME} ${FQ1} ${FQ2} > ${FQPrefix}.sam
 	else
-		${BWA} aln -t ${NCORES} ${RefGENOME} ${FQ1} > ${PREFIX}_R1.sai
-		${BWA} aln -t ${NCORES} ${RefGENOME} ${FQ2} > ${PREFIX}_R2.sai
+		${BWA} aln -t ${NCORES} ${RefGENOME} ${FQ1} > ${FQPrefix}_R1.sai
+		${BWA} aln -t ${NCORES} ${RefGENOME} ${FQ2} > ${FQPrefix}_R2.sai
 		#2 Convert SAI to SAM (BWA): r1.sai, r2.sai ==> .sam 
-		${BWA} sampe -P ${RefGENOME} ${PREFIX}_R1.sai ${PREFIX}_R2.sai ${FQ1} ${FQ2} > ${PREFIX}.sam
+		${BWA} sampe -P ${RefGENOME} ${FQPrefix}_R1.sai ${FQPrefix}_R2.sai ${FQ1} ${FQ2} > ${FQPrefix}.sam
 	fi
 	# LH3:
 	#this works with specific versions of bwa: 0.6.2/0.5.10 otherwise ==> picard/AddOrReplaceReadGroups
-	#~/bin/bwa/bwa sampe -P ${RefGENOME} -r '@RG\tID:foo\tSM:bar' ${MAP1}.sai ${MAP2}.sai ${MAP1}.bam ${MAP2}.bam > ${PREFIX}.sam
+	#${BIN}/bwa/bwa sampe -P ${RefGENOME} -r '@RG\tID:foo\tSM:bar' ${MAP1}.sai ${MAP2}.sai ${MAP1}.bam ${MAP2}.bam > ${FQPrefix}.sam
 	
 	#3 Convert SAM to BAM binary format (SAM Tools): .sam ==> .bam
-	if [[ ! -s ${PREFIX}.sam ]]; then
-		echo "${PREFIX}.sam: zero-length file !"
+	if [[ ! -s ${FQPrefix}.sam ]]; then
+		echo "${FQPrefix}.sam: zero-length file !"
 	  exit
 	fi
-	${SAMTOOLS} import ${RefGENOME}.fai ${PREFIX}.sam ${PREFIX}.bam 
+	${SAMTOOLS} import ${RefGENOME}.fai ${FQPrefix}.sam ${FQPrefix}.bam 
 
 	#4 Sort BAM (SAM Tools, second param is a prefix): .bam ==> .sort.bam 
-	${SAMTOOLS} sort ${PREFIX}.bam ${PREFIX}.sort
+	${SAMTOOLS} sort ${FQPrefix}.bam ${FQPrefix}.sort
 
 	#5 Index BAM (SAM Tools): .bam ==> .bai
-	${SAMTOOLS} index ${PREFIX}.sort.bam
+	${SAMTOOLS} index ${FQPrefix}.sort.bam
 	
-	if [[ -f ${PREFIX}.sort.bam.bai ]]; then
+	if [[ -f ${FQPrefix}.sort.bam.bai ]]; then
 		echo "BWA Alignment done. Removing intermediate file..."
-		#rm ${PREFIX}.sam
-		echo "Removed" ${PREFIX}.sam
-		#rm ${PREFIX}_R1.sai
-		echo "Removed" ${PREFIX}_R1.sai
-		#rm ${PREFIX}_R2.sai
-		echo "Removed" ${PREFIX}_R2.sai
-		#rm ${PREFIX}.bam
-		echo "Removed" ${PREFIX}.bam
+		#rm ${FQPrefix}.sam
+		echo "Removed" ${FQPrefix}.sam
+		#rm ${FQPrefix}_R1.sai
+		echo "Removed" ${FQPrefix}_R1.sai
+		#rm ${FQPrefix}_R2.sai
+		echo "Removed" ${FQPrefix}_R2.sai
+		#rm ${FQPrefix}.bam
+		echo "Removed" ${FQPrefix}.bam
 	fi
 	
 fi
@@ -233,8 +236,8 @@ fi
 #These steps can be performed independently of each other but this order is recommended.
 #Prerequisites:  Installed Picard tools
 
-	if [[ ! -f ${PREFIX}.sort.bam ]]; then
-		echo "${PREFIX}.sort.bam does not exist !"
+	if [[ ! -f ${FQPrefix}.sort.bam ]]; then
+		echo "${FQPrefix}.sort.bam does not exist !"
 	  exit
 	fi
 #
@@ -247,8 +250,8 @@ fi
 if $PICARDPreproc; then
 	#5.1 add grouping info in header (picard): .sort.bam ==> .group.bam, (.group.bai ?)
 	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/AddOrReplaceReadGroups.jar \
-		I=${PREFIX}.sort.bam \
-		O=${PREFIX}.group.bam \
+		I=${FQPrefix}.sort.bam \
+		O=${FQPrefix}.group.bam \
 		LB=whatever PL=illumina PU=r12 SM=$FASTQ1NAME SO=coordinate \
 		CREATE_INDEX=false \
 		VALIDATION_STRINGENCY=LENIENT
@@ -256,38 +259,38 @@ if $PICARDPreproc; then
 
 	#5.2 su cui marco i PCR duplicati group.bam ==> .marked.bam, .marked.bai
 	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/MarkDuplicates.jar \
-		INPUT=${PREFIX}.group.bam \
-		OUTPUT=${PREFIX}.marked.bam \
-		METRICS_FILE=${PREFIX}.metrics \
+		INPUT=${FQPrefix}.group.bam \
+		OUTPUT=${FQPrefix}.marked.bam \
+		METRICS_FILE=${FQPrefix}.metrics \
 		ASSUME_SORTED=true \
 		CREATE_INDEX=true \
 		VALIDATION_STRINGENCY=LENIENT
 	#??? create index x gatk ????
 	#
-	#java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/ReorderSam.jar I=${PREFIX}.marked.bam O=${PREFIX}.lexy_marked.bam REFERENCE= ${RefGENOME} CREATE_INDEX=true
-	if [[ -f ${PREFIX}.marked.bam ]]; then
+	#java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/ReorderSam.jar I=${FQPrefix}.marked.bam O=${FQPrefix}.lexy_marked.bam REFERENCE= ${RefGENOME} CREATE_INDEX=true
+	if [[ -f ${FQPrefix}.marked.bam ]]; then
 		echo "PICARD preprocessing done. Removing intermediate file..."
-		#rm ${PREFIX}.group.bam
-		echo "Removed" ${PREFIX}.group.bam
+		#rm ${FQPrefix}.group.bam
+		echo "Removed" ${FQPrefix}.group.bam
 	fi
 	
 fi
 
 #http://gatkforums.broadinstitute.org/discussion/4133/when-should-i-use-l-to-pass-in-a-list-of-intervals#latest
-#Below is a step-by-step breakdown of the Best Practices workflow, with a detailed explanation of why -L should or shouldn’t be used with each tool.
+#Below is a step-by-step breakdown of the Best Practices workflow, with a detailed explanation of why -L should or shouldnï¿½t be used with each tool.
 #Tool 										-L?		Why / why not
 #RealignerTargetCreator 	YES		Faster since RTC will only look for regions that need to be realigned within the input interval; no time wasted on the rest.
 #IndelRealigner 					NO		IR will only try to realign the regions output from RealignerTargetCreator, so there is nothing to be gained by providing the capture targets.
 #BaseRecalibrator 				YES		This excludes off-target sequences and sequences that may be poorly mapped, which have a higher error rate. Including them could lead to a skewed model and bad recalibration.
 #PrintReads 							NO		Output is a bam file; using -L would lead to lost data.
-#UnifiedG./Haplotype C.		YES		We’re only interested in making calls in exome regions; the rest is a waste of time & includes lots of false positives.
+#UnifiedG./Haplotype C.		YES		Weï¿½re only interested in making calls in exome regions; the rest is a waste of time & includes lots of false positives.
 #Next steps								NO		No need since subsequent steps operate on the callset, which was restricted to the exome 
 
 # here GATK needs .bai index
 if $INDELRealign; then
 
-	if [[ ! -f ${PREFIX}.marked.bam ]]; then
-		echo "${PREFIX}.marked.bam does not exist !"
+	if [[ ! -f ${FQPrefix}.marked.bam ]]; then
+		echo "${FQPrefix}.marked.bam does not exist !"
 	  exit
 	fi
 	#6 Identify target regions for realignment (Genome Analysis Toolkit): .marked.bam ==> .intervals
@@ -295,8 +298,8 @@ if $INDELRealign; then
 	java ${MEM} -jar ${GATK} -T RealignerTargetCreator \
 		-nt $NCORES \
 		-R ${RefGENOME} \
-		-I ${PREFIX}.marked.bam \
-		-o ${PREFIX}.intervals \
+		-I ${FQPrefix}.marked.bam \
+		-o ${FQPrefix}.intervals \
 		-L ${RefINTERVAL}
 		#--knonwn
 
@@ -304,9 +307,9 @@ if $INDELRealign; then
 	#7 Realign BAM to get better Indel calling (Genome Analysis Toolkit): .marked.bam, .intervals ==> .realn.bam
 	java -jar ${GATK} -T IndelRealigner \
 		-R ${RefGENOME} \
-		-I ${PREFIX}.marked.bam \
-		-targetIntervals ${PREFIX}.intervals \
-		-o ${PREFIX}.realn.bam
+		-I ${FQPrefix}.marked.bam \
+		-targetIntervals ${FQPrefix}.intervals \
+		-o ${FQPrefix}.realn.bam
 		# -baq CALCULATE_AS_NECESSARY
 fi
 
@@ -316,14 +319,14 @@ fi
 # G:"No, normally you shouldn't need to use fixmates."
 if $FIXMATE_AND_BAQ; then
 
-	if [[ ! -f ${PREFIX}.realn.bam ]]; then
-		echo "${PREFIX}.realn.bam does not exist !"
+	if [[ ! -f ${FQPrefix}.realn.bam ]]; then
+		echo "${FQPrefix}.realn.bam does not exist !"
 	  exit
 	fi
 	#7.1 using paired end data, the mate information must be fixed: .realn.bam ==> .mated.bam
 	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/FixMateInformation.jar \
-		INPUT=${PREFIX}.realn.bam \
-		OUTPUT=${PREFIX}.mated.bam \
+		INPUT=${FQPrefix}.realn.bam \
+		OUTPUT=${FQPrefix}.mated.bam \
 		SO=coordinate \
 		CREATE_INDEX=true \
 		VALIDATION_STRINGENCY=LENIENT
@@ -332,9 +335,9 @@ if $FIXMATE_AND_BAQ; then
 	GATK_BAQ_POLICY=OFF
 	
 	#7.3 substantially improve SNP specificity with MD/NM editing: .mated.bam ==> .baq.bam
-	${SAMTOOLS} calmd -Abr ${PREFIX}.mated.bam ${RefGENOME} > ${PREFIX}.baq.bam
+	${SAMTOOLS} calmd -Abr ${FQPrefix}.mated.bam ${RefGENOME} > ${FQPrefix}.baq.bam
 	#7.4 Reindex the realigned BAM (SAM Tools)
-	${SAMTOOLS} index ${PREFIX}.baq.bam
+	${SAMTOOLS} index ${FQPrefix}.baq.bam
 else
 	# trust the GATK pipeline for mate and baq
 	GATK_BAQ_POLICY=RECALCULATE
@@ -342,8 +345,8 @@ fi
 
 if $BASERecal; then
 
-	if [[ ! -f ${PREFIX}.realn.bam ]]; then
-		echo "${PREFIX}.realn.bam does not exist !"
+	if [[ ! -f ${FQPrefix}.realn.bam ]]; then
+		echo "${FQPrefix}.realn.bam does not exist !"
 	  exit
 	fi
 	#8.1 base quality score recalibration: count covariates 
@@ -353,8 +356,8 @@ if $BASERecal; then
 		-cov ReadGroupCovariate \
 		-cov QualityScoreCovariate \
 		-cov CycleCovariate \
-		-I ${PREFIX}.realn.bam \
-		-o ${PREFIX}.recal_data.table \
+		-I ${FQPrefix}.realn.bam \
+		-o ${FQPrefix}.recal_data.table \
 		-L ${RefINTERVAL}
 		#retired option:
 		#-cov DinucCovariate \
@@ -363,9 +366,9 @@ if $BASERecal; then
 	# Prints the reads in the BAM file
 	java ${MEM} -jar ${GATK} -T PrintReads \
 		-R ${RefGENOME} \
-		--BQSR ${PREFIX}.recal_data.table\
-		-I ${PREFIX}.realn.bam \
-		-o ${PREFIX}.baq.bam
+		--BQSR ${FQPrefix}.recal_data.table\
+		-I ${FQPrefix}.realn.bam \
+		-o ${FQPrefix}.baq.bam
 	# riaggiungere con GATK > 2.4
 	# vedi http://gatkforums.broadinstitute.org/discussion/2267/baq-tag-error
 	#		-baq ${GATK_BAQ_POLICY} \ 
@@ -379,8 +382,8 @@ if $COVERAGEINFO; then
 	 
 	java ${MEM} -jar ${GATK} -T DepthOfCoverage \
 		-R ${RefGENOME} \
-		-I ${PREFIX}.baq.bam \
-		-o ${PREFIX}.baq.depth \
+		-I ${FQPrefix}.baq.bam \
+		-o ${FQPrefix}.baq.depth \
 		-L ${RefINTERVAL} \
 		-omitBaseOutput \
 		-ct 10 -ct 20 -ct 30
@@ -391,13 +394,13 @@ if $COVERAGEINFO; then
 	sleep 2
 	 
 	coverageBed -abam \
-		-I ${PREFIX}.baq.bam \
+		-I ${FQPrefix}.baq.bam \
 		-b ${RefINTERVAL} \ > ${$PREFIX}.
 # 08-27-2010, 01:19 PM
 # Remember to set a quality threshold (about 50) on indels. Also the best indel caller so far is believed to be Dindel.
 if $SNPCall; then
-	if [[ ! -f ${PREFIX}.baq.bam ]]; then
-		echo "${PREFIX}.baq.bam does not exist !"
+	if [[ ! -f ${FQPrefix}.baq.bam ]]; then
+		echo "${FQPrefix}.baq.bam does not exist !"
 	  exit
 	fi
 	
@@ -407,7 +410,7 @@ if $SNPCall; then
 		-nt $NCORES \
 		-R ${RefGENOME} \
 		-D ${RefSNP} \
-		-metrics ${PREFIX}.snps.metrics \
+		-metrics ${FQPrefix}.snps.metrics \
 		-A DepthOfCoverage \
 		-A AlleleBalance \
 		-stand_call_conf 50.0 \
@@ -415,6 +418,6 @@ if $SNPCall; then
 		-dcov 1000 \
 		-L ${RefINTERVAL} \
 		-baq CALCULATE_AS_NECESSARY \
-		-I ${PREFIX}.baq.bam \
-		-o ${PREFIX}.vcf
+		-I ${FQPrefix}.baq.bam \
+		-o ${FQPrefix}.vcf
 fi
