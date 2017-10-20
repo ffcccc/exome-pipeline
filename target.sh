@@ -13,7 +13,7 @@ fi
 # e.g. 111337
 PRJ=$1
 
-WORK=~/workspace/exome-pipeline/vladimir
+WORK=~/workspace/exome-pipeline/seq
 if [ -d $WORK ]; then
   echo "${WORK}: Directory found."
 else
@@ -39,24 +39,26 @@ RefGENOME=${RefPath}/${REF}.fasta
 # or
 #RefGENOME=${RefPath}/${REF}.fa
 
-#RefINTERVAL=${Bundle}/trusight_cancer_manifest.bed
+#RefINTERVAL=${BUNDLE}/trusight_cancer_manifest.bed
 # or
-#RefINTERVAL=${Bundle}/target.intervals.bed
-RefINTERVAL=${Bundle}/illumina/truseq-exome-targeted-regions-manifest-v1-2.bed
+#RefINTERVAL=${BUNDLE}/target.intervals.bed
+RefINTERVAL=${BUNDLE}/illumina/truseq-exome-targeted-regions-manifest-v1-2.bed
 
-RefSNP=${Bundle}/dbsnp_138.${REF}.vcf
+RefSNP=${BUNDLE}/dbsnp_138.${REF}.vcf
 
 #align parameters:
 #memory alloc.
-MEM=-Xmx6g
+MEM=-Xmx8g
 NCORES=1
 # set the path to tools binaries
 BIN=~/bin
 GATK=${BIN}/gatk/GenomeAnalysisTK.jar
 #PSEQ=${BIN}/pseq
-PICARD=${BIN}/picard
+PICARD=${BIN}/picard/picard.jar
 BWA=${BIN}/bwa/bwa
-SAMTOOLS=${BIN}/samtools/samtools
+#SAMTOOLS=${BIN}/samtools/samtools
+SAMTOOLS=/usr/bin/samtools
+FastQC=${BIN}/FastQC/fastqc
 
 echo "$# parameters...";
 
@@ -86,11 +88,12 @@ TRIM=false
 # BAMFLAG=-b
 
 # or
-MAP2Bam=true
+MAP2Bam=false
+
 #
 PICARDPreproc=false
 #
-INDELRealign=false
+INDELRealign=true
 #
 # FIXMATE step
 # http://gatkforums.broadinstitute.org/discussion/1562/need-to-run-a-step-with-fixmateinformation-after-realignment-step
@@ -141,7 +144,7 @@ if $QC; then
 	  exit
 	fi
 
-	${BIN}/FastQC/fastqc --noextract ${FQ1} ${FQ2}
+	${FastQC} --noextract ${FQ1} ${FQ2}
 	#
 	if $TRIM; then
 		# fastx toolkit
@@ -151,11 +154,11 @@ if $QC; then
 			${BIN}/fastx/bin/fastx_clipper -Q33 -l 125 -i ${FQPrefix}_R1_trimmed.fq -o ${FQPrefix}_R1_clipped.fq
 			${BIN}/fastx/bin/fastx_clipper -Q33 -l 125 -i ${FQPrefix}_R2_trimmed.fq -o ${FQPrefix}_R2_clipped.fq
 		fi
-		${BIN}/FastQC/fastqc --noextract ${FQPrefix}_R1_clipped.fq ${FQPrefix}_R2_clipped.fq
+		${FastQC} --noextract ${FQPrefix}_R1_clipped.fq ${FQPrefix}_R2_clipped.fq
 		# trimmomatic
 		java -jar ${BIN}/trimmomatic/trimmomatic.jar PE -phred33 ${FQ1} ${FQ2} ${FQPrefix}_R1_paired.fq ${FQPrefix}_R1_unpaired.fq ${FQPrefix}_R2_paired.fq ${FQPrefix}_R2_unpaired.fq ILLUMINACLIP:${BIN}/trimmomatic/adapters/NexteraPE-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:150
 		
-		${BIN}/FastQC/fastqc --noextract ${FQPrefix}_R1_paired.fq ${FQPrefix}_R2_paired.fq
+		${FastQC} --noextract ${FQPrefix}_R1_paired.fq ${FQPrefix}_R2_paired.fq
 		FQ1=${FQPrefix}_R1_paired.fq
 		FQ2=${FQPrefix}_R2_paired.fq
 		echo "Fastq reads updated to <${FQ1},${FQ2}>"
@@ -182,11 +185,11 @@ fi
 if $MAP2Bam; then
 	if [[ ! -f ${FQ1} ]]; then
 		echo "${FQ1} does not exist !"
-	  exit
+		exit
 	fi
 	if [[ ! -f ${FQ2} ]]; then
 		echo "${FQ2} does not exist !"
-	  exit
+		exit
 	fi
 	if true; then
 		${BWA} mem -t ${NCORES} -M ${RefGENOME} ${FQ1} ${FQ2} > ${FQPrefix}.sam
@@ -203,7 +206,7 @@ if $MAP2Bam; then
 	#3 Convert SAM to BAM binary format (SAM Tools): .sam ==> .bam
 	if [[ ! -s ${FQPrefix}.sam ]]; then
 		echo "${FQPrefix}.sam: zero-length file !"
-	  exit
+		exit
 	fi
 	${SAMTOOLS} import ${RefGENOME}.fai ${FQPrefix}.sam ${FQPrefix}.bam 
 
@@ -236,10 +239,10 @@ fi
 #These steps can be performed independently of each other but this order is recommended.
 #Prerequisites:  Installed Picard tools
 
-	if [[ ! -f ${FQPrefix}.sort.bam ]]; then
-		echo "${FQPrefix}.sort.bam does not exist !"
-	  exit
-	fi
+if [[ ! -f ${FQPrefix}.sort.bam ]]; then
+	echo "${FQPrefix}.sort.bam does not exist !"
+	exit
+fi
 #
 #Steps:
 #    Sort the aligned reads by coordinate order
@@ -249,16 +252,16 @@ fi
 
 if $PICARDPreproc; then
 	#5.1 add grouping info in header (picard): .sort.bam ==> .group.bam, (.group.bai ?)
-	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/AddOrReplaceReadGroups.jar \
+	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD} AddOrReplaceReadGroups \
 		I=${FQPrefix}.sort.bam \
 		O=${FQPrefix}.group.bam \
-		LB=whatever PL=illumina PU=r12 SM=$FASTQ1NAME SO=coordinate \
+		LB=whatever PL=illumina PU=r12 SM=${PRJ} SO=coordinate \
 		CREATE_INDEX=false \
 		VALIDATION_STRINGENCY=LENIENT
 # create index forse inutile qui ==> meglio dopo (5.2)
 
 	#5.2 su cui marco i PCR duplicati group.bam ==> .marked.bam, .marked.bai
-	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/MarkDuplicates.jar \
+	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD} MarkDuplicates \
 		INPUT=${FQPrefix}.group.bam \
 		OUTPUT=${FQPrefix}.marked.bam \
 		METRICS_FILE=${FQPrefix}.metrics \
@@ -267,14 +270,22 @@ if $PICARDPreproc; then
 		VALIDATION_STRINGENCY=LENIENT
 	#??? create index x gatk ????
 	#
-	#java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/ReorderSam.jar I=${FQPrefix}.marked.bam O=${FQPrefix}.lexy_marked.bam REFERENCE= ${RefGENOME} CREATE_INDEX=true
+	#java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD} ReorderSam I=${FQPrefix}.marked.bam O=${FQPrefix}.lexy_marked.bam REFERENCE=${RefGENOME} CREATE_INDEX=true	  
+
 	if [[ -f ${FQPrefix}.marked.bam ]]; then
+		# check validity of grouped/marked bam
+		java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD} ValidateSamFile \
+			I=${FQPrefix}.marked.bam \
+			INDEX_VALIDATION_STRINGENCY=LESS_EXHAUSTIVE \
+			MODE=SUMMARY
+
 		echo "PICARD preprocessing done. Removing intermediate file..."
 		#rm ${FQPrefix}.group.bam
 		echo "Removed" ${FQPrefix}.group.bam
 	fi
 	
 fi
+
 
 #http://gatkforums.broadinstitute.org/discussion/4133/when-should-i-use-l-to-pass-in-a-list-of-intervals#latest
 #Below is a step-by-step breakdown of the Best Practices workflow, with a detailed explanation of why -L should or shouldn�t be used with each tool.
@@ -291,7 +302,7 @@ if $INDELRealign; then
 
 	if [[ ! -f ${FQPrefix}.marked.bam ]]; then
 		echo "${FQPrefix}.marked.bam does not exist !"
-	  exit
+		exit
 	fi
 	#6 Identify target regions for realignment (Genome Analysis Toolkit): .marked.bam ==> .intervals
 	#  performance 500MB bam/~7000000 reads: 1 core -> 3hh 
@@ -303,7 +314,10 @@ if $INDELRealign; then
 		-L ${RefINTERVAL}
 		#--knonwn
 
-	
+	if [[ ! -f ${FQPrefix}.intervals ]]; then
+		echo "${FQPrefix}.intervals does not exist !"
+		exit
+	fi
 	#7 Realign BAM to get better Indel calling (Genome Analysis Toolkit): .marked.bam, .intervals ==> .realn.bam
 	java -jar ${GATK} -T IndelRealigner \
 		-R ${RefGENOME} \
@@ -321,10 +335,10 @@ if $FIXMATE_AND_BAQ; then
 
 	if [[ ! -f ${FQPrefix}.realn.bam ]]; then
 		echo "${FQPrefix}.realn.bam does not exist !"
-	  exit
+		exit
 	fi
 	#7.1 using paired end data, the mate information must be fixed: .realn.bam ==> .mated.bam
-	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD}/FixMateInformation.jar \
+	java ${MEM} -Djava.io.tmpdir=/tmp -jar ${PICARD} FixMateInformation \
 		INPUT=${FQPrefix}.realn.bam \
 		OUTPUT=${FQPrefix}.mated.bam \
 		SO=coordinate \
@@ -347,7 +361,7 @@ if $BASERecal; then
 
 	if [[ ! -f ${FQPrefix}.realn.bam ]]; then
 		echo "${FQPrefix}.realn.bam does not exist !"
-	  exit
+		exit
 	fi
 	#8.1 base quality score recalibration: count covariates 
 	java ${MEM} -jar ${GATK} -T BaseRecalibrator \
@@ -401,7 +415,7 @@ if $COVERAGEINFO; then
 if $SNPCall; then
 	if [[ ! -f ${FQPrefix}.baq.bam ]]; then
 		echo "${FQPrefix}.baq.bam does not exist !"
-	  exit
+		exit
 	fi
 	
 	#9 snp calls: .baq.bam ==> .vcf
